@@ -91,14 +91,42 @@ class Driver:
 
     def quit(self):
         self.driver.quit()
-        
-def get_Gsheet_info(sheet_id,sheet_range):
+
+
+def get_service():
     # If modifying these scopes, delete the file token.pickle.
     SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
 
-    # The ID and range of a sample spreadsheet.
-    SPREADSHEET_ID = sheet_id
-    RANGE_NAME = sheet_range
+    """Shows basic usage of the Sheets API.
+    Prints values from a sample spreadsheet.
+    """
+    creds = None
+    # The file token.pickle stores the user's access and refresh tokens, and is
+    # created automatically when the authorization flow completes for the first
+    # time.
+    if os.path.exists('token.pickle'):
+        with open('token.pickle', 'rb') as token:
+            creds = pickle.load(token)
+    # If there are no (valid) credentials available, let the user log in.
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(
+                'credentials.json', SCOPES)
+            creds = flow.run_local_server(port=0)
+        # Save the credentials for the next run
+        with open('token.pickle', 'wb') as token:
+            pickle.dump(creds, token)
+
+    service = build('sheets', 'v4', credentials=creds)
+    return service
+
+class Gsheet:
+
+        # If modifying these scopes, delete the file token.pickle.
+    SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
+
     """Shows basic usage of the Sheets API.
     Prints values from a sample spreadsheet.
     """
@@ -123,65 +151,35 @@ def get_Gsheet_info(sheet_id,sheet_range):
 
     service = build('sheets', 'v4', credentials=creds)
 
-    # Call the Sheets API
-    sheet = service.spreadsheets()
-    result = sheet.values().get(spreadsheetId=SPREADSHEET_ID,
-                                range=RANGE_NAME).execute()
-    values = result.get('values', [])
+    def __init__(self,service):
+        self.service = service
 
-    return values
+    def get_Gsheet_info(self,sheet_id,sheet_range):
+        sheet = self.service.spreadsheets()
+        result = sheet.values().get(spreadsheetId=sheet_id,
+                                    range=sheet_range).execute()
+        values = result.get('values', [])
 
-def addRow_to_Gsheet(sheet_id,sheet_range,in_array):
-    # If modifying these scopes, delete the file token.pickle.
-    SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
+        return values
 
-    # The ID and range of a sample spreadsheet.
-    SPREADSHEET_ID = sheet_id
-    RANGE_NAME = sheet_range    
+    def addRow_to_Gsheet(self,sheet_id,sheet_range,in_array):
+        sheet = self.service.spreadsheets()
+        values = in_array
+        body = {
+        "majorDimension": "ROWS",
+        "values": values
+        }
+        result = sheet.values().append(spreadsheetId=sheet_id, range=sheet_range,
+        valueInputOption="USER_ENTERED", body=body).execute()
+        print('{0} cells updated.'.format(result.get('updatedCells')))
 
-    creds = None
-    # The file token.pickle stores the user's access and refresh tokens, and is
-    # created automatically when the authorization flow completes for the first
-    # time.
-    if os.path.exists('token.pickle'):
-        with open('token.pickle', 'rb') as token:
-            creds = pickle.load(token)
-    # If there are no (valid) credentials available, let the user log in.
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            flow = InstalledAppFlow.from_client_secrets_file(
-                'credentials.json', SCOPES)
-            creds = flow.run_local_server(port=0)
-        # Save the credentials for the next run
-        with open('token.pickle', 'wb') as token:
-            pickle.dump(creds, token)
-
-    service = build('sheets', 'v4', credentials=creds)
-
-    # Call the Sheets API
-    sheet = service.spreadsheets()
-    result = sheet.values().get(spreadsheetId=SPREADSHEET_ID,
-                                range=RANGE_NAME).execute()
-    values = result.get('values', [])
-
-    #print(values[0])
-
-    values = in_array
-    body = {
-    "majorDimension": "ROWS",
-    "values": values
-    }
-    result = sheet.values().append(spreadsheetId=SPREADSHEET_ID, range=RANGE_NAME,
-    valueInputOption="USER_ENTERED", body=body).execute()
-    print('{0} cells updated.'.format(result.get('updatedCells')))
-
-def get_last_row(sheet_id,sheet_range):
-
-    mid_value = get_Gsheet_info(sheet_id,sheet_range)
-    last_row = len(mid_value)
-    return last_row
+    def get_last_row(self,sheet_id,sheet_range):
+        sheet = self.service.spreadsheets()
+        result = sheet.values().get(spreadsheetId=sheet_id,
+                                    range=sheet_range).execute()
+        values = result.get('values', [])
+        last_row = len(values)
+        return last_row
 
 def get_page_text(in_url_table):
     in_url_table = in_url_table
@@ -274,16 +272,19 @@ if __name__ == "__main__":
     import time
     global process_start
     process_start = datetime.datetime.now()
-
+    myGsuite = Gsheet(get_service())
     sheet_id ='1JNeAwqA8snFqvZl4DXgrU3SXsVHrV62j-9cXgIFPoSw'
-    in_url_table = get_Gsheet_info(sheet_id,'input_Url!A2:A') 
+
+    in_url_table = myGsuite.get_Gsheet_info(sheet_id,'input_Url!A2:A') 
     
     output_text_data = get_page_text(in_url_table)
 
-    output_url_stt_lastrow = get_last_row(sheet_id,'Output_STT!A1:A')
-    addRow_to_Gsheet(sheet_id,'Output_STT!A{a}:C{b}'.format(a=str(output_url_stt_lastrow+1),b=str(output_url_stt_lastrow+len(output_text_data['url_stt']))),output_text_data['url_stt'])
+    output_url_stt_lastrow = myGsuite.get_last_row(sheet_id,'Output_STT!A1:A')
+
+    myGsuite.addRow_to_Gsheet(sheet_id,'Output_STT!A{a}:C{b}'.format(a=str(output_url_stt_lastrow+1),b=str(output_url_stt_lastrow+len(output_text_data['url_stt']))),output_text_data['url_stt'])
     
-    output_url_stt_lastrow = get_last_row(sheet_id,'Output_Text!A1:A')
-    addRow_to_Gsheet(sheet_id,'Output_Text!A{a}:E{b}'.format(a=str(output_url_stt_lastrow+1),b=str(output_url_stt_lastrow+len(output_text_data['url_text'][0]))),output_text_data['url_text'][0])
+    output_url_stt_lastrow = myGsuite.get_last_row(sheet_id,'Output_Text!A1:A')
+    myGsuite.addRow_to_Gsheet(sheet_id,'Output_Text!A{a}:E{b}'.format(a=str(output_url_stt_lastrow+1),b=str(output_url_stt_lastrow+len(output_text_data['url_text'][0]))),output_text_data['url_text'][0])
     
     print('***DONE***')
+
